@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, lit, sha2, encrypt
+from pyspark.sql.functions import col, lit, sha2, encrypt, concat
 
 logger = logging.getLogger(__name__)
 
@@ -359,7 +359,7 @@ def encrypt_api_credentials(credentials: Dict[str, str], key: Optional[str] = No
     return manager.encrypt_sensitive_data(credentials, key)
 
 
-{{- if .compliance_mode == "gdpr" }}
+# GDPR compliance functions
 def anonymize_gdpr_data(
     df: DataFrame,
     personal_data_columns: List[str],
@@ -388,4 +388,3 @@ def anonymize_gdpr_data(
             if col_name in df.columns:
                 processed_df = processed_df.drop(col_name)
         return processed_df
-{{- end }}
