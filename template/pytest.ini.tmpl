@@ -1,0 +1,99 @@
+[tool:pytest]
+# Enterprise pytest configuration for {{project_name}}
+minversion = 6.0
+testpaths = tests
+python_files = test_*.py *_test.py
+python_classes = Test*
+python_functions = test_*
+
+# Test discovery patterns
+addopts = 
+    --strict-markers
+    --strict-config
+    --verbose
+    --tb=short
+    --cov=src
+    --cov-report=html:htmlcov
+    --cov-report=xml:coverage.xml
+    --cov-report=term-missing
+    --cov-fail-under=80
+    --junitxml=junit.xml
+    --maxfail=3
+    --durations=10
+
+# Custom markers for test categorization
+markers =
+    unit: Unit tests (fast, isolated)
+    integration: Integration tests (slower, requires external resources)
+    performance: Performance and benchmark tests
+    smoke: Smoke tests for critical functionality
+    slow: Tests that take longer than 30 seconds
+    databricks: Tests that require Databricks connectivity
+    unity_catalog: Tests that require Unity Catalog access
+    expensive: Tests that consume significant resources
+    security: Security-related tests
+    data_quality: Data quality validation tests
+    monitoring: Monitoring and observability tests
+    end_to_end: End-to-end workflow tests
+    regression: Regression tests
+    nightly: Tests run during nightly builds
+    manual: Tests that require manual intervention
+
+# Test environment configuration
+env = 
+    PYTHONPATH = src
+    TESTING = true
+    LOG_LEVEL = DEBUG
+
+# Filtering and collection
+filterwarnings =
+    error
+    ignore::UserWarning
+    ignore::DeprecationWarning:databricks.*
+    ignore::PendingDeprecationWarning
+
+# Test timeout (in seconds)
+timeout = 300
+timeout_method = thread
+
+# Parallel execution support
+# Uncomment to enable parallel testing
+# addopts = --numprocesses=auto
+
+# Coverage configuration
+[coverage:run]
+source = src
+omit = 
+    */tests/*
+    */test_*
+    */conftest.py
+    */__pycache__/*
+    */venv/*
+    */site-packages/*
+    src/notebooks/*
+
+branch = true
+parallel = true
+
+[coverage:report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+
+[coverage:html]
+directory = htmlcov
+title = {{project_name}} Test Coverage Report
+
+[coverage:xml]
+output = coverage.xml
