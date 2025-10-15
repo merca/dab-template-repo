@@ -109,8 +109,14 @@ databricks bundle run example_workflow --target dev
 ### Environments
 
 This project supports multiple deployment targets:
-{{- range .environments}}
-- **{{.}}**: {{if eq . "dev"}}Development environment{{else if eq . "staging"}}Staging environment{{else if eq . "prod"}}Production environment{{else if eq . "uat"}}User acceptance testing{{else}}QA environment{{end}}
+{{- if .include_dev_env}}
+- **dev**: Development environment
+{{- end}}
+{{- if .include_staging_env}}
+- **staging**: Staging environment
+{{- end}}
+{{- if .include_prod_env}}
+- **prod**: Production environment
 {{- end}}
 
 ### Deploy to an Environment
