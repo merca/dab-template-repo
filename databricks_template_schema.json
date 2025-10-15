@@ -1,0 +1,94 @@
+{
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "description": "Name of the project (usually the same as the repository name)",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9-_]*$"
+    },
+    "author": {
+      "type": "string",
+      "description": "Name of the author or team lead"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email address of the author or team contact",
+      "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "organization": {
+      "type": "string",
+      "description": "Organization or company name"
+    },
+    "project_description": {
+      "type": "string",
+      "description": "Brief description of the project"
+    },
+    "cicd_provider": {
+      "type": "string",
+      "description": "CI/CD provider",
+      "enum": ["github", "azure", "gitlab"],
+      "default": "github"
+    },
+    "cloud_provider": {
+      "type": "string",
+      "description": "Cloud provider",
+      "enum": ["azure", "aws", "gcp"],
+      "default": "azure"
+    },
+    "include_example_jobs": {
+      "type": "boolean",
+      "description": "Whether to include example pipelines and jobs",
+      "default": true
+    },
+    "include_unity_catalog": {
+      "type": "boolean",
+      "description": "Whether to include Unity Catalog configuration",
+      "default": true
+    },
+    "include_data_quality": {
+      "type": "boolean",
+      "description": "Whether to include data quality framework",
+      "default": true
+    },
+    "include_monitoring": {
+      "type": "boolean",
+      "description": "Whether to include enterprise monitoring and alerting",
+      "default": true
+    },
+    "include_security": {
+      "type": "boolean",
+      "description": "Whether to include enhanced security features",
+      "default": true
+    },
+    "include_governance": {
+      "type": "boolean",
+      "description": "Whether to include governance and compliance features",
+      "default": true
+    },
+    "environments": {
+      "type": "array",
+      "description": "List of deployment environments",
+      "items": {
+        "type": "string",
+        "enum": ["dev", "staging", "prod", "uat", "qa"]
+      },
+      "default": ["dev", "staging", "prod"]
+    },
+    "medallion_architecture": {
+      "type": "boolean",
+      "description": "Whether to implement medallion (bronze/silver/gold) architecture",
+      "default": true
+    },
+    "include_devcontainer": {
+      "type": "boolean",
+      "description": "Whether to include DevContainer configuration",
+      "default": true
+    },
+    "python_version": {
+      "type": "string",
+      "description": "Python version for development and runtime",
+      "enum": ["3.9", "3.10", "3.11"],
+      "default": "3.11"
+    }
+  },
+  "required": ["project_name", "author", "email", "organization"]
+}

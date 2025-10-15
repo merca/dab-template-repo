@@ -1,0 +1,391 @@
+"""
+Enterprise Encryption Manager for {{.project_name}}
+
+Provides comprehensive encryption capabilities for data at rest and in transit,
+following enterprise security standards and compliance requirements.
+"""
+
+import base64
+import hashlib
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Union
+
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import col, lit, sha2, encrypt
+
+logger = logging.getLogger(__name__)
+
+
+class EncryptionManager:
+    """
+    Enterprise-grade encryption manager for sensitive data protection.
+
+    Supports multiple encryption algorithms and key management strategies
+    with full audit trail and compliance reporting.
+    """
+
+    def __init__(
+        self,
+        key_vault_url: Optional[str] = None,
+        environment: str = "dev",
+        compliance_mode: str = "standard"
+    ):
+        """
+        Initialize the encryption manager.
+
+        Args:
+            key_vault_url: URL to the key vault service
+            environment: Deployment environment (dev/staging/prod)
+            compliance_mode: Compliance level (standard/strict/hipaa/gdpr)
+        """
+        self.key_vault_url = key_vault_url
+        self.environment = environment
+        self.compliance_mode = compliance_mode
+        self._master_key: Optional[bytes] = None
+        self._audit_log: List[Dict[str, Any]] = []
+
+        # Set compliance-based encryption requirements
+        self._set_compliance_requirements()
+
+        logger.info(
+            f"Encryption manager initialized for {environment} environment "
+            f"with {compliance_mode} compliance mode"
+        )
+
+    def _set_compliance_requirements(self) -> None:
+        """Set encryption requirements based on compliance mode."""
+        compliance_configs = {
+            "standard": {
+                "min_key_size": 256,
+                "hash_algorithm": "SHA-256",
+                "require_key_rotation": False,
+                "audit_level": "basic"
+            },
+            "strict": {
+                "min_key_size": 512,
+                "hash_algorithm": "SHA-512",
+                "require_key_rotation": True,
+                "audit_level": "detailed"
+            },
+            "hipaa": {
+                "min_key_size": 256,
+                "hash_algorithm": "SHA-256",
+                "require_key_rotation": True,
+                "audit_level": "comprehensive",
+                "data_residency": "US"
+            },
+            "gdpr": {
+                "min_key_size": 256,
+                "hash_algorithm": "SHA-256",
+                "require_key_rotation": True,
+                "audit_level": "comprehensive",
+                "right_to_be_forgotten": True
+            }
+        }
+
+        self.config = compliance_configs.get(
+            self.compliance_mode,
+            compliance_configs["standard"]
+        )
+
+    def generate_encryption_key(self) -> str:
+        """
+        Generate a new encryption key following compliance requirements.
+
+        Returns:
+            Base64 encoded encryption key
+        """
+        key = Fernet.generate_key()
+        key_b64 = base64.b64encode(key).decode('utf-8')
+
+        # Audit log entry
+        self._log_audit_event({
+            "action": "key_generation",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "environment": self.environment,
+            "compliance_mode": self.compliance_mode,
+            "key_size": len(key) * 8
+        })
+
+        logger.info(f"New encryption key generated with {len(key) * 8}-bit strength")
+        return key_b64
+
+    def encrypt_sensitive_data(
+        self,
+        data: Union[str, bytes, Dict[str, Any]],
+        key: Optional[str] = None
+    ) -> str:
+        """
+        Encrypt sensitive data using Fernet symmetric encryption.
+
+        Args:
+            data: Data to encrypt (string, bytes, or dictionary)
+            key: Base64 encoded encryption key (optional)
+
+        Returns:
+            Base64 encoded encrypted data
+        """
+        if key is None:
+            key = self.generate_encryption_key()
+
+        # Convert data to bytes if necessary
+        if isinstance(data, dict):
+            data_bytes = json.dumps(data).encode('utf-8')
+        elif isinstance(data, str):
+            data_bytes = data.encode('utf-8')
+        else:
+            data_bytes = data
+
+        # Decrypt the key and create Fernet instance
+        key_bytes = base64.b64decode(key.encode('utf-8'))
+        cipher_suite = Fernet(key_bytes)
+
+        # Encrypt the data
+        encrypted_data = cipher_suite.encrypt(data_bytes)
+        encrypted_b64 = base64.b64encode(encrypted_data).decode('utf-8')
+
+        # Audit log entry
+        self._log_audit_event({
+            "action": "data_encryption",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data_size": len(data_bytes),
+            "encrypted_size": len(encrypted_data)
+        })
+
+        return encrypted_b64
+
+    def decrypt_sensitive_data(
+        self,
+        encrypted_data: str,
+        key: str,
+        return_type: str = "string"
+    ) -> Union[str, bytes, Dict[str, Any]]:
+        """
+        Decrypt sensitive data.
+
+        Args:
+            encrypted_data: Base64 encoded encrypted data
+            key: Base64 encoded decryption key
+            return_type: Type to return (string/bytes/dict)
+
+        Returns:
+            Decrypted data in specified format
+        """
+        try:
+            # Decode the encrypted data and key
+            encrypted_bytes = base64.b64decode(encrypted_data.encode('utf-8'))
+            key_bytes = base64.b64decode(key.encode('utf-8'))
+
+            # Create Fernet instance and decrypt
+            cipher_suite = Fernet(key_bytes)
+            decrypted_bytes = cipher_suite.decrypt(encrypted_bytes)
+
+            # Convert to requested return type
+            if return_type == "bytes":
+                result = decrypted_bytes
+            elif return_type == "dict":
+                result = json.loads(decrypted_bytes.decode('utf-8'))
+            else:  # string
+                result = decrypted_bytes.decode('utf-8')
+
+            # Audit log entry
+            self._log_audit_event({
+                "action": "data_decryption",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "decrypted_size": len(decrypted_bytes)
+            })
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Decryption failed: {str(e)}")
+            self._log_audit_event({
+                "action": "decryption_failure",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": str(e)
+            })
+            raise
+
+    def encrypt_dataframe_columns(
+        self,
+        df: DataFrame,
+        columns_to_encrypt: List[str],
+        encryption_key: Optional[str] = None
+    ) -> DataFrame:
+        """
+        Encrypt specified columns in a Spark DataFrame.
+
+        Args:
+            df: Input DataFrame
+            columns_to_encrypt: List of column names to encrypt
+            encryption_key: Encryption key (optional)
+
+        Returns:
+            DataFrame with encrypted columns
+        """
+        if encryption_key is None:
+            encryption_key = self.generate_encryption_key()
+
+        encrypted_df = df
+
+        for column_name in columns_to_encrypt:
+            if column_name in df.columns:
+                # Use Spark's built-in encryption functions
+                encrypted_df = encrypted_df.withColumn(
+                    f"{column_name}_encrypted",
+                    encrypt(col(column_name), lit(encryption_key))
+                ).drop(column_name)
+
+                # Rename the encrypted column back to original name
+                encrypted_df = encrypted_df.withColumnRenamed(
+                    f"{column_name}_encrypted",
+                    column_name
+                )
+
+        # Audit log entry
+        self._log_audit_event({
+            "action": "dataframe_encryption",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "columns_encrypted": columns_to_encrypt,
+            "row_count": df.count()
+        })
+
+        logger.info(f"Encrypted {len(columns_to_encrypt)} columns in DataFrame")
+        return encrypted_df
+
+    def hash_pii_columns(
+        self,
+        df: DataFrame,
+        pii_columns: List[str],
+        salt: Optional[str] = None
+    ) -> DataFrame:
+        """
+        Hash PII columns using SHA-256 with salt for anonymization.
+
+        Args:
+            df: Input DataFrame
+            pii_columns: List of PII column names to hash
+            salt: Salt value for hashing (optional)
+
+        Returns:
+            DataFrame with hashed PII columns
+        """
+        if salt is None:
+            salt = self.generate_encryption_key()[:16]  # Use first 16 chars as salt
+
+        hashed_df = df
+
+        for column_name in pii_columns:
+            if column_name in df.columns:
+                # Hash the column with salt using SHA-256
+                hashed_df = hashed_df.withColumn(
+                    column_name,
+                    sha2(
+                        concat(col(column_name), lit(salt)),
+                        256
+                    )
+                )
+
+        # Audit log entry
+        self._log_audit_event({
+            "action": "pii_hashing",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "columns_hashed": pii_columns,
+            "hash_algorithm": "SHA-256"
+        })
+
+        logger.info(f"Hashed {len(pii_columns)} PII columns")
+        return hashed_df
+
+    def get_encryption_metadata(self) -> Dict[str, Any]:
+        """
+        Get encryption configuration metadata.
+
+        Returns:
+            Dictionary containing encryption metadata
+        """
+        return {
+            "environment": self.environment,
+            "compliance_mode": self.compliance_mode,
+            "configuration": self.config,
+            "key_vault_url": self.key_vault_url,
+            "audit_events_count": len(self._audit_log)
+        }
+
+    def export_audit_log(self, file_path: str) -> None:
+        """
+        Export audit log to file for compliance reporting.
+
+        Args:
+            file_path: Path to save the audit log
+        """
+        audit_data = {
+            "metadata": self.get_encryption_metadata(),
+            "audit_events": self._audit_log,
+            "exported_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        with open(file_path, 'w') as f:
+            json.dump(audit_data, f, indent=2)
+
+        logger.info(f"Audit log exported to {file_path}")
+
+    def _log_audit_event(self, event: Dict[str, Any]) -> None:
+        """Log an audit event."""
+        self._audit_log.append(event)
+
+        # In production, you might want to send this to a centralized audit system
+        if self.config.get("audit_level") == "comprehensive":
+            logger.info(f"Audit event: {json.dumps(event)}")
+
+
+# Convenience functions for common encryption operations
+def encrypt_connection_string(connection_string: str, key: Optional[str] = None) -> str:
+    """Encrypt a database connection string."""
+    manager = EncryptionManager()
+    return manager.encrypt_sensitive_data(connection_string, key)
+
+
+def encrypt_api_credentials(credentials: Dict[str, str], key: Optional[str] = None) -> str:
+    """Encrypt API credentials dictionary."""
+    manager = EncryptionManager()
+    return manager.encrypt_sensitive_data(credentials, key)
+
+
+{{- if .compliance_mode == "gdpr" }}
+def anonymize_gdpr_data(
+    df: DataFrame,
+    personal_data_columns: List[str],
+    pseudonymize: bool = True
+) -> DataFrame:
+    """
+    Anonymize or pseudonymize personal data for GDPR compliance.
+
+    Args:
+        df: Input DataFrame with personal data
+        personal_data_columns: List of columns containing personal data
+        pseudonymize: If True, pseudonymize; if False, anonymize completely
+
+    Returns:
+        DataFrame with anonymized/pseudonymized data
+    """
+    manager = EncryptionManager(compliance_mode="gdpr")
+
+    if pseudonymize:
+        # Pseudonymization - data can potentially be re-identified
+        return manager.hash_pii_columns(df, personal_data_columns)
+    else:
+        # Full anonymization - remove personal data completely
+        processed_df = df
+        for col_name in personal_data_columns:
+            if col_name in df.columns:
+                processed_df = processed_df.drop(col_name)
+        return processed_df
+{{- end }}

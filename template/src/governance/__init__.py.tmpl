@@ -1,0 +1,32 @@
+"""
+{{.project_name}} Governance Module
+
+This module provides enterprise-grade governance, compliance, and auditing capabilities
+for Databricks Asset Bundles.
+
+Author: {{.author}} <{{.email}}>
+Organization: {{.organization}}
+"""
+
+from .audit_logger import AuditLogger, AuditEvent
+from .compliance_checker import ComplianceChecker, ComplianceRule
+from .data_lineage import DataLineageTracker, LineageNode
+from .access_manager import AccessManager, PermissionLevel
+{{- if .include_security }}
+from .security_policy import SecurityPolicyEnforcer, SecurityPolicy
+{{- end }}
+
+__all__ = [
+    "AuditLogger",
+    "AuditEvent",
+    "ComplianceChecker",
+    "ComplianceRule",
+    "DataLineageTracker",
+    "LineageNode",
+    "AccessManager",
+    "PermissionLevel",
+    {{- if .include_security }}
+    "SecurityPolicyEnforcer",
+    "SecurityPolicy",
+    {{- end }}
+]

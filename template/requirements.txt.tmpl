@@ -1,0 +1,36 @@
+# Core Databricks and Spark dependencies
+pyspark==3.5.0
+databricks-sdk>=0.20.0
+
+# Data processing and analysis
+pandas>=2.0.0
+numpy>=1.24.0
+{{- if .include_data_quality}}
+great-expectations>=0.18.0
+{{- end}}
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Code quality
+ruff>=0.1.0
+mypy>=1.5.0
+pre-commit>=3.0.0
+
+# Development utilities
+python-dotenv>=1.0.0
+{{- if eq .cloud_provider "azure"}}
+azure-identity>=1.14.0
+azure-storage-blob>=12.17.0
+{{- else if eq .cloud_provider "aws"}}
+boto3>=1.28.0
+botocore>=1.31.0
+{{- else if eq .cloud_provider "gcp"}}
+google-cloud-storage>=2.10.0
+{{- end}}
+
+# Optional monitoring dependencies
+{{- if .include_monitoring}}
+prometheus-client>=0.17.0
+{{- end}}

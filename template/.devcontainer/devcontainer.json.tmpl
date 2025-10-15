@@ -1,0 +1,99 @@
+{
+  "name": "{{.project_name}} Development",
+  "image": "mcr.microsoft.com/devcontainers/python:{{.python_version}}-bullseye",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": false,
+        "python.formatting.provider": "black",
+        "python.sortImports.provider": "isort",
+        "python.analysis.typeCheckingMode": "basic",
+        "files.exclude": {
+          "**/.git": true,
+          "**/.DS_Store": true,
+          "**/node_modules": true,
+          "**/__pycache__": true,
+          "**/*.pyc": true
+        },
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        {{- if .include_data_quality }}
+        "ms-toolsai.jupyter",
+        {{- end }}
+        "GitHub.vscode-pull-request-github",
+        "ms-vscode.vscode-json",
+        "redhat.vscode-yaml",
+        "databricks.databricks",
+        "ms-azuretools.vscode-docker",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker"
+      ]
+    }
+  },
+
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18"
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  "onCreateCommand": "bash .devcontainer/setup.sh",
+  "postCreateCommand": "pip install --user -e '.[dev]'",
+  "postStartCommand": "pre-commit install",
+
+  "forwardPorts": [8080, 8888, 4040],
+  "portsAttributes": {
+    "8080": {
+      "label": "Web UI",
+      "onAutoForward": "notify"
+    },
+    "8888": {
+      "label": "Jupyter",
+      "onAutoForward": "openPreview"
+    },
+    "4040": {
+      "label": "Spark UI",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "remoteEnv": {
+    "DATABRICKS_CONFIG_PROFILE": "dev",
+    {{- if eq .cloud_provider "azure" }}
+    "DATABRICKS_AUTH_TYPE": "azure-cli",
+    {{- else if eq .cloud_provider "aws" }}
+    "DATABRICKS_AUTH_TYPE": "aws-profile",
+    {{- end }}
+    "PYTHONPATH": "${containerWorkspaceFolder}/src:${PYTHONPATH}"
+  },
+
+  "mounts": [
+    "source=${localEnv:HOME}/.databrickscfg,target=/home/vscode/.databrickscfg,type=bind,consistency=cached",
+    {{- if eq .cloud_provider "azure" }}
+    "source=${localEnv:HOME}/.azure,target=/home/vscode/.azure,type=bind,consistency=cached",
+    {{- else if eq .cloud_provider "aws" }}
+    "source=${localEnv:HOME}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached",
+    {{- end }}
+    "source=${localWorkspaceFolder}/.vscode,target=${containerWorkspaceFolder}/.vscode,type=bind,consistency=cached"
+  ],
+
+  "workspaceFolder": "/workspaces/{{.project_name}}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/{{.project_name}},type=bind,consistency=cached"
+}

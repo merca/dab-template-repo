@@ -1,0 +1,560 @@
+bundle:
+  name: {{.project_name}}
+
+{{- $package_name := .project_name | replace "-" "_" }}
+
+# Global variables shared across all targets
+variables:
+  {{- if .include_unity_catalog }}
+  # Unity Catalog Configuration
+  catalog:
+    description: "Unity Catalog name"
+
+  schema:
+    description: "Schema name"
+  {{- end }}
+
+  # Cluster Configuration
+  cluster_node_type:
+    description: "Node type for clusters"
+
+  min_workers:
+    description: "Minimum number of workers"
+    type: int
+
+  max_workers:
+    description: "Maximum number of workers"
+    type: int
+
+  # Service Principal
+  service_principal_id:
+    description: "Service principal ID for authentication"
+
+  # Notification Configuration
+  notification_email:
+    description: "Primary notification email"
+
+  oncall_email:
+    description: "On-call notification email"
+
+  # Environment Configuration
+  environment:
+    description: "Environment name ({{range $i, $env := .environments}}{{if $i}}, {{end}}{{$env}}{{end}})"
+
+  {{- if .medallion_architecture }}
+  # Data Storage Locations
+  raw_data_location:
+    description: "Raw data storage location (Bronze layer)"
+
+  processed_data_location:
+    description: "Processed data storage location (Silver layer)"
+
+  curated_data_location:
+    description: "Curated data storage location (Gold layer)"
+  {{- end }}
+
+  {{- if .include_security }}
+  # Security Configuration
+  secret_scope:
+    description: "Databricks secret scope name"
+
+  encryption_key:
+    description: "Encryption key for sensitive data"
+  {{- end }}
+
+  {{- if .include_monitoring }}
+  # Cost Management
+  cost_center:
+    description: "Cost center for resource allocation"
+
+  budget_alert_threshold:
+    description: "Budget alert threshold in USD"
+    type: int
+
+  # Webhook Configuration
+  slack_webhook_url:
+    description: "Slack webhook URL for notifications"
+
+  {{- if eq .cloud_provider "azure" }}
+  teams_webhook_url:
+    description: "Microsoft Teams webhook URL"
+  {{- end }}
+
+  # SLA Configuration
+  sla_uptime_target:
+    description: "Target uptime percentage"
+    type: float
+
+  max_downtime_minutes:
+    description: "Maximum allowed downtime in minutes"
+    type: int
+
+  backup_retention_days:
+    description: "Backup retention period in days"
+    type: int
+
+  disaster_recovery_region:
+    description: "Disaster recovery region"
+  {{- end }}
+
+targets:
+{{- range .environments }}
+  {{.}}:
+    {{- if eq . "dev" }}
+    mode: development
+    {{- else }}
+    mode: production
+    {{- end }}
+    workspace:
+      {{- if eq $.cloud_provider "azure" }}
+      host: https://adb-123456789.{{if eq . "dev"}}12{{else if eq . "staging"}}13{{else}}14{{end}}.azuredatabricks.net  # Replace with your {{.}} workspace URL
+      {{- else if eq $.cloud_provider "aws" }}
+      host: https://dbc-12345678-123{{if eq . "dev"}}4{{else if eq . "staging"}}5{{else}}6{{end}}.cloud.databricks.com  # Replace with your {{.}} workspace URL
+      {{- end }}
+      {{- if eq . "dev" }}
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+    run_as:
+      user_name: ${workspace.current_user.userName}
+      {{- else }}
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
+
+    run_as:
+      service_principal_name: ${var.service_principal_id}
+      {{- end }}
+
+    variables:
+      {{- if $.include_unity_catalog }}
+      catalog: {{.}}_catalog
+      schema: {{.}}_schema
+      {{- end }}
+      environment: {{.}}
+      {{- if eq . "dev" }}
+      cluster_node_type: {{if eq $.cloud_provider "azure"}}Standard_DS3_v2{{else}}i3.xlarge{{end}}
+      min_workers: 0
+      max_workers: 2
+      service_principal_id: {{$.organization}}-{{$.project_name}}-{{.}}-sp
+      notification_email: {{$.email}}
+      oncall_email: {{$.email}}
+      {{- else if eq . "staging" }}
+      cluster_node_type: {{if eq $.cloud_provider "azure"}}Standard_DS4_v2{{else}}i3.2xlarge{{end}}
+      min_workers: 1
+      max_workers: 4
+      service_principal_id: {{$.organization}}-{{$.project_name}}-{{.}}-sp
+      notification_email: {{$.email}}
+      oncall_email: {{$.email}}
+      {{- else if eq . "prod" }}
+      cluster_node_type: {{if eq $.cloud_provider "azure"}}Standard_DS5_v2{{else}}i3.4xlarge{{end}}
+      min_workers: 2
+      max_workers: 8
+      service_principal_id: {{$.organization}}-{{$.project_name}}-{{.}}-sp
+      notification_email: {{$.email}}
+      oncall_email: {{$.email}}
+      {{- end }}
+      {{- if $.medallion_architecture }}
+      # Data locations for {{.}} environment
+      raw_data_location: {{if eq $.cloud_provider "azure"}}abfss://{{.}}-bronze@{{$.organization | lower}}datalake.dfs.core.windows.net/{{else}}s3://{{$.organization | lower}}-{{.}}-datalake-bronze/{{end}}
+      processed_data_location: {{if eq $.cloud_provider "azure"}}abfss://{{.}}-silver@{{$.organization | lower}}datalake.dfs.core.windows.net/{{else}}s3://{{$.organization | lower}}-{{.}}-datalake-silver/{{end}}
+      curated_data_location: {{if eq $.cloud_provider "azure"}}abfss://{{.}}-gold@{{$.organization | lower}}datalake.dfs.core.windows.net/{{else}}s3://{{$.organization | lower}}-{{.}}-datalake-gold/{{end}}
+      {{- end }}
+      {{- if $.include_security }}
+      secret_scope: {{.}}-secrets
+      {{- if ne . "dev" }}
+      encryption_key: ${secrets.{{.}}-secrets.encryption-key}
+      {{- end }}
+      {{- end }}
+      {{- if $.include_monitoring }}
+      cost_center: {{$.organization}}-{{$.project_name}}-{{.}}
+      {{- if eq . "dev" }}
+      budget_alert_threshold: 500
+      {{- else if eq . "staging" }}
+      budget_alert_threshold: 2000
+      slack_webhook_url: ${secrets.{{.}}-secrets.slack-webhook-url}
+      {{- else if eq . "prod" }}
+      budget_alert_threshold: 10000
+      slack_webhook_url: ${secrets.{{.}}-secrets.slack-webhook-url}
+      {{- if eq $.cloud_provider "azure" }}
+      teams_webhook_url: ${secrets.{{.}}-secrets.teams-webhook-url}
+      {{- end }}
+      sla_uptime_target: 99.{{if eq . "prod"}}9{{else}}5{{end}}
+      max_downtime_minutes: {{if eq . "prod"}}5{{else}}30{{end}}
+      backup_retention_days: {{if eq . "prod"}}90{{else if eq . "staging"}}30{{else}}7{{end}}
+      disaster_recovery_region: {{if eq $.cloud_provider "azure"}}East US 2{{else}}us-west-2{{end}}
+      {{- end }}
+      {{- end }}
+
+    {{- if ne . "dev" }}
+    # {{. | title}}-specific resource overrides
+    resources:
+      {{- if $.include_example_jobs }}
+      jobs:
+        {{$package_name}}_job:
+          {{- if eq . "staging" }}
+          timeout_seconds: 14400
+          max_concurrent_runs: 2
+          {{- else if eq . "prod" }}
+          schedule:
+            quartz_cron_expression: 0 0 2 * * ?
+            timezone_id: UTC
+            pause_status: UNPAUSED
+          timeout_seconds: 21600
+          max_concurrent_runs: 1
+          {{- end }}
+          tasks:
+            - task_key: main_task
+              {{- if eq . "staging" }}
+              timeout_seconds: 7200
+              max_retries: 3
+              {{- else if eq . "prod" }}
+              timeout_seconds: 10800
+              max_retries: 5
+              min_retry_interval_millis: 300000
+              retry_on_timeout: true
+              {{- end }}
+          email_notifications:
+            {{- if eq . "prod" }}
+            on_start:
+              - ${var.notification_email}
+            {{- end }}
+            on_success:
+              - ${var.notification_email}
+            on_failure:
+              - ${var.notification_email}
+              - ${var.oncall_email}
+          {{- if eq . "prod" }}
+          tags:
+            criticality: high
+            environment: ${var.environment}
+          {{- end }}
+      {{- end }}
+      {{- if $.medallion_architecture }}
+      pipelines:
+        bronze_pipeline:
+          {{- if ne . "dev" }}
+          development: false
+          photon: true
+          {{- if eq . "prod" }}
+          configuration:
+            pipelines.autoOptimize.managed: "true"
+            pipelines.autoOptimize.zOrderCols: "true"
+          clusters:
+            - label: default
+              custom_tags:
+                criticality: high
+                environment: ${var.environment}
+            - label: maintenance
+              autoscale:
+                min_workers: 1
+                max_workers: 4
+              node_type_id: ${var.cluster_node_type}
+              custom_tags:
+                environment: ${var.environment}
+                pipeline: bronze
+                purpose: maintenance
+          {{- end }}
+          notifications:
+            - email_recipients:
+                - ${var.notification_email}
+                - ${var.oncall_email}
+              alerts:
+                - on-update-failure
+                - on-flow-failure
+                {{- if eq . "prod" }}
+                - on-update-fatal-failure
+                {{- end }}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+
+{{- end }}
+
+# Common resources across all environments
+resources:
+  {{- if .include_example_jobs }}
+  jobs:
+    {{$package_name}}_job:
+      name: ${bundle.target}_{{$package_name}}_job
+
+      job_clusters:
+        - job_cluster_key: main_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            node_type_id: ${var.cluster_node_type}
+            {{- if eq .cloud_provider "azure" }}
+            driver_node_type_id: ${var.cluster_node_type}
+            {{- end }}
+            autoscale:
+              min_workers: ${var.min_workers}
+              max_workers: ${var.max_workers}
+            spark_conf:
+              spark.sql.adaptive.enabled: "true"
+              spark.sql.adaptive.coalescePartitions.enabled: "true"
+              {{- if .include_monitoring }}
+              spark.databricks.delta.optimizeWrite.enabled: "true"
+              spark.databricks.delta.autoCompact.enabled: "true"
+              {{- end }}
+            custom_tags:
+              environment: ${var.environment}
+              project: {{.project_name}}
+              bundle: ${bundle.name}
+              created_by: {{.author}}
+
+      tasks:
+        - task_key: main_task
+          job_cluster_key: main_cluster
+
+          {{- if .include_example_jobs }}
+          notebook_task:
+            notebook_path: ./src/notebooks/{{$package_name}}_processing
+            source: WORKSPACE
+          {{- else }}
+          python_wheel_task:
+            package_name: {{$package_name}}
+            entry_point: main
+          {{- end }}
+
+          timeout_seconds: 3600
+          max_retries: 2
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+          {{- if .include_monitoring }}
+          - ${var.oncall_email}
+          {{- end }}
+
+      tags:
+        environment: ${var.environment}
+        bundle: ${bundle.name}
+        project: {{.project_name}}
+  {{- end }}
+
+  {{- if .medallion_architecture }}
+  pipelines:
+    bronze_pipeline:
+      name: ${bundle.target}_bronze_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: ${var.min_workers}
+            max_workers: ${var.max_workers}
+          node_type_id: ${var.cluster_node_type}
+          {{- if eq .cloud_provider "azure" }}
+          driver_node_type_id: ${var.cluster_node_type}
+          {{- end }}
+          custom_tags:
+            environment: ${var.environment}
+            pipeline: bronze
+            bundle: ${bundle.name}
+            created_by: {{.author}}
+
+      libraries:
+        {{- if .include_example_jobs }}
+        - notebook:
+            path: ./src/notebooks/bronze_ingestion
+        {{- else }}
+        - python_wheel:
+            package_name: {{$package_name}}
+        {{- end }}
+
+      development: true  # Will be overridden in production targets
+      photon: false       # Will be overridden in production targets
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+
+    {{- if .include_example_jobs }}
+    silver_pipeline:
+      name: ${bundle.target}_silver_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: ${var.min_workers}
+            max_workers: ${var.max_workers}
+          node_type_id: ${var.cluster_node_type}
+          custom_tags:
+            environment: ${var.environment}
+            pipeline: silver
+            bundle: ${bundle.name}
+
+      libraries:
+        - notebook:
+            path: ./src/notebooks/silver_transformation
+
+      development: true
+      photon: false
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+
+    gold_pipeline:
+      name: ${bundle.target}_gold_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      clusters:
+        - label: default
+          autoscale:
+            min_workers: ${var.min_workers}
+            max_workers: ${var.max_workers}
+          node_type_id: ${var.cluster_node_type}
+          custom_tags:
+            environment: ${var.environment}
+            pipeline: gold
+            bundle: ${bundle.name}
+
+      libraries:
+        - notebook:
+            path: ./src/notebooks/gold_aggregation
+
+      development: true
+      photon: false
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+    {{- end }}
+  {{- end }}
+
+  {{- if .include_data_quality }}
+  jobs:
+    data_quality_job:
+      name: ${bundle.target}_data_quality_validation
+
+      job_clusters:
+        - job_cluster_key: dq_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            node_type_id: ${var.cluster_node_type}
+            num_workers: 1
+            custom_tags:
+              environment: ${var.environment}
+              purpose: data_quality
+
+      tasks:
+        - task_key: quality_checks
+          job_cluster_key: dq_cluster
+
+          {{- if .include_example_jobs }}
+          notebook_task:
+            notebook_path: ./src/notebooks/data_quality_validation
+            source: WORKSPACE
+          {{- else }}
+          python_wheel_task:
+            package_name: {{$package_name}}
+            entry_point: data_quality_main
+          {{- end }}
+
+          timeout_seconds: 1800
+          max_retries: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      tags:
+        environment: ${var.environment}
+        purpose: data_quality
+  {{- end }}
+
+  {{- if .include_monitoring }}
+  jobs:
+    monitoring_job:
+      name: ${bundle.target}_system_monitoring
+
+      schedule:
+        quartz_cron_expression: 0 */15 * * * ?  # Every 15 minutes
+        timezone_id: UTC
+        pause_status: UNPAUSED
+
+      job_clusters:
+        - job_cluster_key: monitoring_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            node_type_id: ${var.cluster_node_type}
+            num_workers: 0  # Single-node for monitoring
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+
+      tasks:
+        - task_key: health_check
+          job_cluster_key: monitoring_cluster
+
+          {{- if .include_example_jobs }}
+          notebook_task:
+            notebook_path: ./src/notebooks/system_monitoring
+            source: WORKSPACE
+          {{- else }}
+          python_wheel_task:
+            package_name: {{$package_name}}
+            entry_point: monitoring_main
+          {{- end }}
+
+          timeout_seconds: 900
+          max_retries: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+          - ${var.oncall_email}
+
+      tags:
+        environment: ${var.environment}
+        purpose: monitoring
+        critical: "true"
+  {{- end }}
+
+{{- if .include_unity_catalog }}
+# Unity Catalog resources (if applicable)
+resources:
+  schemas:
+    {{.project_name | replace "-" "_"}}_schema:
+      name: ${var.schema}
+      catalog_name: ${var.catalog}
+      comment: "Schema for {{.project_name}} project - ${var.environment} environment"
+
+      properties:
+        environment: ${var.environment}
+        project: {{.project_name}}
+        owner: {{.author}}
+        created_by_bundle: ${bundle.name}
+{{- end }}

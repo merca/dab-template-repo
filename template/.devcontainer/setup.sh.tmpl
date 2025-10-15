@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# {{.project_name}} DevContainer Setup Script
+# This script sets up the development environment for the project
+
+set -e
+
+echo "🚀 Setting up {{.project_name}} development environment..."
+
+# Update system packages
+echo "📦 Updating system packages..."
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Install additional system dependencies
+echo "🔧 Installing system dependencies..."
+sudo apt-get install -y \
+    curl \
+    wget \
+    git \
+    vim \
+    htop \
+    tree \
+    jq \
+    unzip \
+    {{- if eq .cloud_provider "azure" }}
+    azure-cli \
+    {{- else if eq .cloud_provider "aws" }}
+    awscli \
+    {{- end }}
+
+# Install uv for fast Python package management
+echo "⚡ Installing uv for Python package management..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+
+# Install Databricks CLI
+echo "🧱 Installing Databricks CLI..."
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+echo 'export PATH="$HOME/.databricks/bin:$PATH"' >> ~/.bashrc
+
+{{- if eq .cloud_provider "azure" }}
+# Configure Azure CLI (if not already done)
+echo "☁️ Configuring Azure CLI integration..."
+# Azure CLI should already be installed, just ensure it's available
+az --version || echo "Azure CLI not found, please install it manually"
+{{- end }}
+
+{{- if eq .cloud_provider "aws" }}
+# Install AWS CLI v2 (if not already installed)
+echo "☁️ Installing AWS CLI v2..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install --update
+rm -rf awscliv2.zip aws/
+{{- end }}
+
+# Create necessary directories
+echo "📁 Creating project directories..."
+mkdir -p \
+    /workspaces/{{.project_name}}/logs \
+    /workspaces/{{.project_name}}/.databricks \
+    /workspaces/{{.project_name}}/tmp
+
+# Set up Python virtual environment using uv
+echo "🐍 Setting up Python virtual environment..."
+cd /workspaces/{{.project_name}}
+uv venv --python {{.python_version}}
+
+# Activate virtual environment and install dependencies
+echo "📚 Installing Python dependencies..."
+source .venv/bin/activate
+uv pip install --upgrade pip
+uv pip install -e ".[dev]"
+
+# Set up pre-commit hooks
+echo "🎣 Setting up pre-commit hooks..."
+pre-commit install
+pre-commit install --hook-type commit-msg
+
+{{- if .include_data_quality }}
+# Set up Jupyter kernel
+echo "📓 Setting up Jupyter kernel..."
+python -m ipykernel install --user --name {{.project_name | replace "-" "_"}} --display-name "{{.project_name}}"
+{{- end }}
+
+# Create useful aliases
+echo "🔗 Creating useful aliases..."
+cat >> ~/.bashrc << 'EOF'
+
+# {{.project_name}} aliases
+alias dab='databricks bundle'
+alias dab-validate='databricks bundle validate'
+alias dab-deploy='databricks bundle deploy'
+alias dab-run='databricks bundle run'
+alias activate='source .venv/bin/activate'
+{{- if .include_data_quality }}
+alias jupyter='jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root'
+{{- end }}
+
+# Git aliases
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline'
+
+EOF
+
+# Set up workspace-specific settings
+echo "⚙️ Configuring workspace settings..."
+cat > /workspaces/{{.project_name}}/.vscode/settings.json << 'EOF'
+{
+    "python.defaultInterpreterPath": ".venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "databricks.python.env": ".venv/bin/python",
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true,
+        "**/.venv/**": true,
+        "**/__pycache__/**": true
+    }
+}
+EOF
+
+# Create development configuration template
+echo "🔧 Creating development configuration template..."
+cat > /workspaces/{{.project_name}}/.env.template << 'EOF'
+# {{.project_name}} Environment Variables
+# Copy this file to .env and fill in your values
+
+# Databricks Configuration
+{{- if eq .cloud_provider "azure" }}
+DATABRICKS_HOST=https://adb-123456789.12.azuredatabricks.net
+DATABRICKS_CLIENT_ID=your-service-principal-client-id
+DATABRICKS_CLIENT_SECRET=your-service-principal-client-secret
+DATABRICKS_TENANT_ID=your-azure-tenant-id
+{{- else if eq .cloud_provider "aws" }}
+DATABRICKS_HOST=https://dbc-12345678-1234.cloud.databricks.com
+DATABRICKS_TOKEN=your-databricks-token
+{{- end }}
+
+# Development Settings
+ENVIRONMENT=dev
+LOG_LEVEL=INFO
+DEBUG=true
+
+{{- if .include_monitoring }}
+# Monitoring Configuration
+ENABLE_MONITORING=true
+METRICS_ENDPOINT=http://localhost:9090
+{{- end }}
+
+{{- if .include_data_quality }}
+# Data Quality Settings
+DATA_QUALITY_ENABLED=true
+QUALITY_THRESHOLD=0.95
+{{- end }}
+EOF
+
+echo "✅ DevContainer setup completed successfully!"
+echo ""
+echo "Next steps:"
+echo "1. Copy .env.template to .env and configure your credentials"
+echo "2. Run 'source ~/.bashrc' to load aliases"
+echo "3. Validate your bundle: 'dab-validate --target dev'"
+echo "4. Start developing! 🎉"
+echo ""
+echo "Happy coding with {{.project_name}}! 🚀"

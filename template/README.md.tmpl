@@ -1,0 +1,182 @@
+# {{.project_name}}
+
+{{.project_description}}
+
+**Author:** {{.author}} ({{.email}})  
+**Organization:** {{.organization}}
+
+## Overview
+
+This Databricks Asset Bundle project provides a complete data engineering solution with:
+
+{{- if .medallion_architecture}}
+- **Medallion Architecture**: Bronze, Silver, and Gold data layers
+{{- end}}
+{{- if .include_unity_catalog}}
+- **Unity Catalog Integration**: Centralized metadata and governance
+{{- end}}
+{{- if .include_data_quality}}
+- **Data Quality Framework**: Built-in data validation and monitoring
+{{- end}}
+{{- if .include_monitoring}}
+- **Monitoring & Alerting**: Enterprise-grade monitoring capabilities
+{{- end}}
+{{- if .include_security}}
+- **Enhanced Security**: Security best practices and configurations
+{{- end}}
+{{- if .include_governance}}
+- **Governance & Compliance**: Built-in compliance features
+{{- end}}
+
+## Quick Start
+
+### Prerequisites
+
+1. **Databricks CLI**: Install the Databricks CLI
+   ```bash
+   pip install databricks-cli
+   ```
+
+2. **Authentication**: Configure your Databricks authentication
+   ```bash
+   databricks configure --token
+   ```
+
+### Development Setup
+
+{{- if .include_devcontainer}}
+#### Using DevContainer (Recommended)
+
+1. Open this project in VS Code
+2. Install the "Dev Containers" extension
+3. Press `F1` → "Dev Containers: Reopen in Container"
+4. The development environment will be automatically set up
+
+#### Manual Setup
+{{- end}}
+
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Configure Environment**:
+   Copy `.env.example` to `.env` and configure your settings
+
+3. **Deploy to Development**:
+   ```bash
+   databricks bundle deploy --target dev
+   ```
+
+4. **Run Workflows**:
+   ```bash
+   databricks bundle run --target dev
+   ```
+
+## Project Structure
+
+```
+{{.project_name}}/
+├── src/                    # Source code and notebooks
+├── configs/               # Environment-specific configurations
+├── tests/                # Test files
+├── databricks.yml        # Bundle configuration
+├── pyproject.toml        # Python project configuration
+{{- if .include_devcontainer}}
+├── .devcontainer/        # Development container setup
+{{- end}}
+└── .github/              # CI/CD workflows
+```
+
+{{- if .include_example_jobs}}
+## Example Workflows
+
+This project includes example workflows that demonstrate:
+
+- Data ingestion patterns
+- Data transformation using medallion architecture
+- Data quality checks and monitoring
+- Automated testing and deployment
+
+Run the example workflow:
+```bash
+databricks bundle run example_workflow --target dev
+```
+{{- end}}
+
+## Deployment
+
+### Environments
+
+This project supports multiple deployment targets:
+{{- range .environments}}
+- **{{.}}**: {{if eq . "dev"}}Development environment{{else if eq . "staging"}}Staging environment{{else if eq . "prod"}}Production environment{{else if eq . "uat"}}User acceptance testing{{else}}QA environment{{end}}
+{{- end}}
+
+### Deploy to an Environment
+
+```bash
+databricks bundle deploy --target <environment>
+```
+
+### CI/CD
+
+{{- if eq .cicd_provider "github"}}
+This project uses GitHub Actions for continuous integration and deployment. 
+
+The workflows are automatically triggered on:
+- Pull requests to main branch
+- Pushes to main branch
+- Manual workflow dispatch
+
+Configure the following secrets in your GitHub repository:
+- `DATABRICKS_HOST`: Your Databricks workspace URL
+- `DATABRICKS_TOKEN`: Service principal token for deployment
+{{- else if eq .cicd_provider "azure"}}
+This project uses Azure DevOps for continuous integration and deployment.
+
+Configure the following variables in your Azure DevOps pipeline:
+- `DATABRICKS_HOST`: Your Databricks workspace URL  
+- `DATABRICKS_TOKEN`: Service principal token for deployment
+{{- else if eq .cicd_provider "gitlab"}}
+This project uses GitLab CI/CD for continuous integration and deployment.
+
+Configure the following variables in your GitLab project:
+- `DATABRICKS_HOST`: Your Databricks workspace URL
+- `DATABRICKS_TOKEN`: Service principal token for deployment
+{{- end}}
+
+## Testing
+
+Run tests locally:
+```bash
+pytest tests/
+```
+
+{{- if .include_data_quality}}
+Run data quality tests:
+```bash
+pytest tests/data_quality/
+```
+{{- end}}
+
+## Documentation
+
+- [Databricks Asset Bundles Documentation](https://docs.databricks.com/dev-tools/bundles/index.html)
+- [Project Architecture](docs/architecture.md)
+- [Development Guide](docs/development.md)
+- [Deployment Guide](docs/deployment.md)
+
+## Contributing
+
+1. Create a feature branch from `main`
+2. Make your changes and add tests
+3. Run the test suite to ensure everything passes
+4. Submit a pull request with a clear description
+
+## Support
+
+For questions or issues:
+- Contact: {{.email}}
+- Documentation: See the `docs/` directory
+- Issues: Use the project's issue tracker

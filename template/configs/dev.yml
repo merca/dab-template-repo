@@ -1,0 +1,17 @@
+# Development environment configuration
+# DEPRECATED: This file contained legacy cluster configurations.
+# All configuration is now managed in the main databricks.yml with serverless compute.
+#
+# The main databricks.yml now uses:
+# - Pure serverless compute (no clusters to manage)
+# - Organized variable structure with YAML anchors
+# - Environment-specific sections within the main file
+#
+# This file is kept for reference but is not used by the bundle.
+
+# Configuration has been moved to:
+# - databricks.yml (main configuration with serverless)
+# - All environment-specific settings are in the main file under targets:
+#   - targets.dev
+#   - targets.staging
+#   - targets.prod
