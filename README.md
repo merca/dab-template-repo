@@ -95,6 +95,78 @@ This template is designed to be flexible and customizable. You can:
 - Extend the schema to include additional configuration options
 - Customize the CI/CD workflows for your specific requirements
 
+## TODO - Remaining Enterprise Features
+
+The following enterprise features are planned but not yet implemented:
+
+### 📚 Enterprise Documentation
+- [ ] **Setup Guides**: Comprehensive setup documentation for different cloud providers
+- [ ] **Troubleshooting Guide**: Common issues and solutions documentation
+- [ ] **Best Practices Guide**: Enterprise best practices and patterns
+- [ ] **API Documentation**: Auto-generated API docs for libraries
+- [ ] **Architecture Decision Records (ADRs)**: Document key architectural decisions
+- [ ] **Runbook Templates**: Operational runbooks for production support
+- [ ] **Security Guidelines**: Security implementation and compliance guides
+
+### 🛠️ Development Environment Setup
+- [ ] **Pre-commit Hooks**: Code quality and security checks before commits
+- [ ] **Advanced DevContainer**: Enhanced development container with all tools
+- [ ] **IDE Configurations**: VSCode/PyCharm settings and extensions
+- [ ] **Local Testing Environment**: Complete local development and testing setup
+- [ ] **Development Scripts**: Automation scripts for common development tasks
+- [ ] **Code Formatting**: Black, isort, and other formatting tool configurations
+- [ ] **Linting Setup**: Comprehensive linting with flake8, mypy, and security scanners
+
+### 📊 Advanced Monitoring & Observability
+- [ ] **Distributed Tracing**: OpenTelemetry integration for end-to-end tracing
+- [ ] **Custom Dashboards**: Pre-built Grafana/Databricks dashboard templates
+- [ ] **SLA Monitoring**: Service level agreement monitoring and alerting
+- [ ] **Cost Monitoring**: Cloud cost tracking and optimization recommendations
+- [ ] **Performance Profiling**: Advanced performance monitoring and analysis
+
+### 🔐 Enhanced Security Features
+- [ ] **Secret Rotation**: Automated secret rotation and management
+- [ ] **Network Security**: VPC/VNET configuration templates
+- [ ] **Access Control**: Advanced RBAC and policy templates
+- [ ] **Compliance Scanning**: Automated compliance and security scanning
+- [ ] **Data Encryption**: Advanced encryption at rest and in transit
+
+### 🏗️ Infrastructure as Code
+- [ ] **Terraform Modules**: Complete infrastructure templates
+- [ ] **ARM/CloudFormation**: Cloud-specific infrastructure templates
+- [ ] **Resource Tagging**: Standardized resource tagging strategies
+- [ ] **Multi-Region Setup**: Cross-region deployment templates
+
+### 📈 Advanced Data Features
+- [ ] **Data Lineage**: Automated data lineage tracking and visualization
+- [ ] **Schema Evolution**: Advanced schema management and evolution
+- [ ] **Data Catalog Integration**: Enhanced metadata management
+- [ ] **Real-time Streaming**: Kafka/Event Hubs integration templates
+- [ ] **ML Operations**: MLflow integration and model lifecycle management
+
+### ✅ Testing Framework (COMPLETED)
+- [x] **Pytest Configuration**: Strict pytest settings with custom markers
+- [x] **Test Requirements**: Comprehensive testing dependencies
+- [x] **Test Fixtures**: Advanced test utilities including:
+  - [x] Spark session fixtures with optimized configurations
+  - [x] Sample data fixtures (customers, transactions)
+  - [x] Mock fixtures for Databricks clients and secret managers
+  - [x] Metrics and monitoring test utilities
+  - [x] Benchmarking and performance test helpers
+- [x] **Unit Tests**: Complete unit tests for data quality and secret management
+- [x] **Integration Tests**: End-to-end notebook and pipeline testing
+- [x] **Performance Tests**: Load testing and benchmarking capabilities
+- [x] **Smoke Tests**: Quick validation tests for critical functionality
+
+### 🔄 CI/CD Enhancements
+- [ ] **Multi-Cloud Deployments**: Support for AWS, Azure, and GCP simultaneously
+- [ ] **Canary Deployments**: Advanced deployment strategies
+- [ ] **Rollback Capabilities**: Automated rollback on deployment failures
+- [ ] **Integration Testing**: Full integration test suites in CI/CD
+- [ ] **Security Scanning**: Automated security and vulnerability scanning
+
+---
+
 ## Contributing
 
 Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and contribute to the project.
