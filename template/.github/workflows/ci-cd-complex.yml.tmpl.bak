@@ -1,0 +1,263 @@
+name: "{{.project_name}} - CI/CD Pipeline"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  UV_VERSION: "0.4.15"
+  PYTHON_VERSION: "{{.python_version}}"
+  DATABRICKS_CLI_VERSION: "0.230.0"
+
+jobs:
+  quality-checks:
+    name: "Code Quality & Testing"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{`{{ env.UV_VERSION }}`}}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{`{{ env.PYTHON_VERSION }}`}}
+
+      - name: Create virtual environment
+        run: uv venv --python ${{`{{ env.PYTHON_VERSION }}`}}
+
+      - name: Install dependencies
+        run: |
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+          uv pip install -r requirements-dev.txt
+
+      - name: Run pre-commit hooks
+        run: |
+          source .venv/bin/activate
+          pre-commit run --all-files
+
+      - name: Type checking with mypy
+        run: |
+          source .venv/bin/activate
+          mypy src/ --config-file pyproject.toml
+
+      - name: Run unit tests
+        run: |
+          source .venv/bin/activate
+          pytest tests/unit/ \
+            --cov=src/ \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  bundle-validation:
+    name: "Bundle Validation"
+    runs-on: ubuntu-latest
+    needs: quality-checks
+    strategy:
+      matrix:
+        environment: [{{- if .include_dev_env }}"dev"{{- if or .include_staging_env .include_prod_env }}, {{- end }}{{- end }}{{- if .include_staging_env }}"staging"{{- if .include_prod_env }}, {{- end }}{{- end }}{{- if .include_prod_env }}"prod"{{- end }}]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          echo "$HOME/.databricks/bin" >> $GITHUB_PATH
+
+      - name: Validate bundle
+        run: |
+          databricks bundle validate --target ${{ matrix.environment }}
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets[format('DATABRICKS_HOST_{0}', upper(matrix.environment))] }}
+          DATABRICKS_CLIENT_ID: ${{ secrets[format('DATABRICKS_CLIENT_ID_{0}', upper(matrix.environment))] }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets[format('DATABRICKS_CLIENT_SECRET_{0}', upper(matrix.environment))] }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets[format('DATABRICKS_HOST_{0}', upper(matrix.environment))] }}
+          DATABRICKS_TOKEN: ${{ secrets[format('DATABRICKS_TOKEN_{0}', upper(matrix.environment))] }}
+          {{- end }}
+
+  deploy-dev:
+    name: "Deploy to Development"
+    runs-on: ubuntu-latest
+    needs: [quality-checks, bundle-validation]
+    {{- if .include_dev_env }}
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    {{- else }}
+    if: false
+    {{- end }}
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          echo "$HOME/.databricks/bin" >> $GITHUB_PATH
+
+      - name: Deploy bundle
+        run: |
+          databricks bundle deploy --target dev --force-lock
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_DEV }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_DEV }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_DEV }}
+          {{- end }}
+
+      {{- if .include_data_quality }}
+      - name: Run data processing job
+        run: |
+          databricks bundle run data_processing_job --target dev
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_DEV }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_DEV }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_DEV }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_DEV }}
+          {{- end }}
+      {{- end }}
+
+  deploy-staging:
+    name: "Deploy to Staging"
+    runs-on: ubuntu-latest
+    needs: [deploy-dev]
+    {{- if .include_staging_env }}
+    if: github.ref == 'refs/heads/main'
+    {{- else }}
+    if: false
+    {{- end }}
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          echo "$HOME/.databricks/bin" >> $GITHUB_PATH
+
+      - name: Deploy bundle
+        run: |
+          databricks bundle deploy --target staging --force-lock
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_STAGING }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_STAGING }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_STAGING }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_STAGING }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_STAGING }}
+          {{- end }}
+
+      - name: Integration tests
+        run: |
+          databricks bundle run integration_tests --target staging
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_STAGING }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_STAGING }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_STAGING }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_STAGING }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_STAGING }}
+          {{- end }}
+
+  deploy-production:
+    name: "Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    {{- if .include_prod_env }}
+    if: github.ref == 'refs/heads/main'
+    {{- else }}
+    if: false
+    {{- end }}
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          echo "$HOME/.databricks/bin" >> $GITHUB_PATH
+
+      {{- if .include_monitoring }}
+      - name: Create backup
+        run: |
+          databricks bundle run backup_job --target prod
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_PROD }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_PROD }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+          {{- end }}
+      {{- end }}
+
+      - name: Deploy bundle
+        run: |
+          databricks bundle deploy --target prod --force-lock
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_PROD }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_PROD }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+          {{- end }}
+
+      - name: Smoke tests
+        run: |
+          databricks bundle run smoke_tests --target prod
+        env:
+          {{- if eq .cloud_provider "azure" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID_PROD }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET_PROD }}
+          {{- else if eq .cloud_provider "aws" }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST_PROD }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN_PROD }}
+          {{- end }}
+
+      {{- if .include_monitoring }}
+      - name: Send deployment notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#{{.project_name}}'
+          message: 'Production deployment completed for {{.project_name}}!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+      {{- end }}
