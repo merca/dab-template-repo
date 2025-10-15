@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "{{.project_name | replace "-" "_"}}"
+name = "{{.project_name}}"
 version = "1.0.0"
 description = "{{.project_description}}"
 authors = [
@@ -54,11 +54,11 @@ Repository = "https://github.com/{{.organization}}/{{.project_name}}"
 Issues = "https://github.com/{{.organization}}/{{.project_name}}/issues"
 
 [project.scripts]
-{{.project_name | replace "-" "_"}} = "{{.project_name | replace "-" "_"}}.cli:main"
+{{.project_name}} = "{{.project_name}}.cli:main"
 
 # Ruff configuration
 [tool.ruff]
-target-version = "py{{.python_version | replace "." ""}}"
+target-version = "py311"
 line-length = 88
 select = [
     "E", "W",   # pycodestyle
@@ -78,7 +78,7 @@ ignore = [
 "tests/**/*" = ["B011"]
 
 [tool.ruff.isort]
-known-first-party = ["{{.project_name | replace "-" "_"}}"]
+known-first-party = ["{{.project_name}}"]
 
 # MyPy configuration
 [tool.mypy]
@@ -142,7 +142,7 @@ exclude_lines = [
 # Black configuration
 [tool.black]
 line-length = 88
-target-version = ['py{{.python_version | replace "." ""}}']
+target-version = ['py311']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

@@ -80,7 +80,7 @@ pre-commit install --hook-type commit-msg
 {{- if .include_data_quality }}
 # Set up Jupyter kernel
 echo "📓 Setting up Jupyter kernel..."
-python -m ipykernel install --user --name {{.project_name | replace "-" "_"}} --display-name "{{.project_name}}"
+python -m ipykernel install --user --name {{.project_name}} --display-name "{{.project_name}}"
 {{- end }}
 
 # Create useful aliases

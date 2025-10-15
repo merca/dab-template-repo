@@ -1,7 +1,7 @@
 bundle:
   name: {{.project_name}}
 
-{{- $package_name := .project_name | replace "-" "_" }}
+{{- $package_name := .project_name }}
 
 # Global variables shared across all targets
 variables:
@@ -167,7 +167,7 @@ resources:
 # Unity Catalog resources
 resources:
   schemas:
-    {{.project_name | replace "-" "_"}}_schema:
+    {{$package_name}}_schema:
       name: ${var.schema}
       catalog_name: ${var.catalog}
       comment: "Schema for {{.project_name}} project - ${var.environment} environment"
