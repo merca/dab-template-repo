@@ -46,7 +46,7 @@
     },
     "include_data_quality": {
       "type": "boolean",
-      "description": "Whether to include data quality framework",
+      "description": "Whether to include comprehensive data quality framework",
       "default": true
     },
     "include_monitoring": {
@@ -94,6 +94,46 @@
       "description": "Python version for development and runtime",
       "enum": ["3.9", "3.10", "3.11"],
       "default": "3.11"
+    },
+    "include_intelligent_cicd": {
+      "type": "boolean",
+      "description": "Whether to include intelligent CI/CD with path-based execution",
+      "default": true
+    },
+    "include_comprehensive_tests": {
+      "type": "boolean",
+      "description": "Whether to include comprehensive unit and integration tests",
+      "default": true
+    },
+    "include_secret_management": {
+      "type": "boolean",
+      "description": "Whether to include enterprise secret management capabilities",
+      "default": true
+    },
+    "include_precommit_hooks": {
+      "type": "boolean",
+      "description": "Whether to include pre-commit hooks for code quality",
+      "default": true
+    },
+    "include_enterprise_docs": {
+      "type": "boolean",
+      "description": "Whether to include comprehensive enterprise documentation",
+      "default": true
+    },
+    "serverless_compute": {
+      "type": "boolean",
+      "description": "Whether to use serverless compute by default",
+      "default": true
+    },
+    "slack_integration": {
+      "type": "boolean",
+      "description": "Whether to include Slack integration for notifications",
+      "default": false
+    },
+    "include_variable_overrides": {
+      "type": "boolean",
+      "description": "Whether to include variable override files for each environment",
+      "default": true
     }
   },
   "required": ["project_name", "author", "email", "organization"]

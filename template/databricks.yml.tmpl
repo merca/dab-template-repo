@@ -1,157 +1,584 @@
+# ==========================================
+# ENTERPRISE DATABRICKS BUNDLE CONFIGURATION
+# ==========================================
+#
+# This configuration demonstrates enterprise Databricks Asset Bundle features:
+# • Variable definitions with descriptions and documentation
+# • YAML anchors (&) and references (<<: *) for DRY configuration
+# • Environment-specific variable-overrides.json files
+# • Automatic DATABRICKS_HOST environment variable usage
+# {{- if .serverless_compute }}
+# • Serverless compute configuration across all environments
+# {{- end }}
+#
+# Variable Configuration Strategy:
+# • Variable definitions: Defined in this file with descriptions
+# {{- if .include_variable_overrides }}
+# • Variable values: Set via .databricks/bundle/{target}/variable-overrides.json
+# {{- end }}
+# • Workspace host: Automatically uses DATABRICKS_HOST environment variable
+#
+# Environment Structure:
+# {{- if .include_dev_env }}
+# • dev: Development mode, user authentication, variables from variable-overrides.json
+# {{- end }}
+# {{- if .include_staging_env }}
+# • staging: Production mode, service principal auth, variables from variable-overrides.json
+# {{- end }}
+# {{- if .include_prod_env }}
+# • prod: Production mode, service principal auth, variables from variable-overrides.json
+# {{- end }}
+# ==========================================
+
 bundle:
   name: {{.project_name}}
 
 {{- $package_name := .project_name }}
 
-# Global variables shared across all targets
+# Variables organized by common vs environment-specific
 variables:
+  # ===========================================
+  # COMMON VARIABLES (used across all environments)
+  # ===========================================
+
   {{- if .include_unity_catalog }}
   # Unity Catalog Configuration
   catalog:
     description: "Unity Catalog name"
+    # Values: main (dev), staging_catalog, prod_catalog
 
   schema:
     description: "Schema name"
+    # Values: dev_schema, staging_schema, prod_schema
   {{- end }}
 
-  # Cluster Configuration
-  cluster_node_type:
-    description: "Node type for clusters"
+  environment:
+    description: "Environment name ({{- if .include_dev_env }}dev{{- if or .include_staging_env .include_prod_env }}, {{- end }}{{- end }}{{- if .include_staging_env }}staging{{- if .include_prod_env }}, {{- end }}{{- end }}{{- if .include_prod_env }}prod{{- end }})"
+    # Values: {{- if .include_dev_env }}dev{{- if or .include_staging_env .include_prod_env }}, {{- end }}{{- end }}{{- if .include_staging_env }}staging{{- if .include_prod_env }}, {{- end }}{{- end }}{{- if .include_prod_env }}prod{{- end }}
 
-  min_workers:
-    description: "Minimum number of workers"
-    type: int
+  # ===========================================
+  # ENVIRONMENT-SPECIFIC VARIABLES
+  # ===========================================
 
-  max_workers:
-    description: "Maximum number of workers"
-    type: int
+  {{- if .serverless_compute }}
+  # Serverless Configuration
+  serverless_enabled:
+    description: "Enable serverless compute for jobs"
+    # Values: true (all environments for fast, cost-effective compute)
+  {{- end }}
 
-  # Service Principal
+  # Authentication & Security
   service_principal_id:
     description: "Service principal ID for authentication"
+    # Values: dev-sp, staging-sp, prod-sp
 
-  # Notification Configuration
+  user_email:
+    description: "User email for run_as configuration"
+    # Values: {{.email}} (dev), service-principal-email (staging/prod)
+
+  # Notifications
   notification_email:
     description: "Primary notification email"
+    # Values: {{.email}}
 
-  # Environment Configuration
-  environment:
-    description: "Environment name"
+  {{- if .include_monitoring }}
+  oncall_email:
+    description: "On-call notification email"
+    # Values: dev-oncall@, staging-oncall@, prod-oncall@
+  {{- end }}
+
+  {{- if .medallion_architecture }}
+  # Data Storage
+  raw_data_location:
+    description: "Raw data storage location (Bronze layer)"
+    # Values: {{if eq .cloud_provider "azure"}}abfss://dev-bronze@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-bronze/{{else}}gs://{{.organization}}-dev-datalake-bronze/{{end}}
+
+  processed_data_location:
+    description: "Processed data storage location (Silver layer)"
+    # Values: {{if eq .cloud_provider "azure"}}abfss://dev-silver@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-silver/{{else}}gs://{{.organization}}-dev-datalake-silver/{{end}}
+
+  curated_data_location:
+    description: "Curated data storage location (Gold layer)"
+    # Values: {{if eq .cloud_provider "azure"}}abfss://dev-gold@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-gold/{{else}}gs://{{.organization}}-dev-datalake-gold/{{end}}
+  {{- end }}
+
+# ===========================================
+# YAML ANCHORS FOR COMMON CONFIGURATIONS
+# ===========================================
+
+# Common workspace configuration for production environments
+_production_workspace: &production_workspace
+  mode: production
+
+# Common authentication for production environments
+_production_auth: &production_auth
+  service_principal_name: ${var.service_principal_id}
+
+# Common notification configuration
+_standard_notifications: &standard_notifications
+  on_failure:
+    - ${var.notification_email}
+    {{- if .include_monitoring }}
+    - ${var.oncall_email}
+    {{- end }}
+
+{{- if .include_monitoring }}
+# Production notification configuration (more comprehensive)
+_production_notifications: &production_notifications
+  on_start:
+    - ${var.notification_email}
+  on_success:
+    - ${var.notification_email}
+  on_failure:
+    - ${var.notification_email}
+    - ${var.oncall_email}
+{{- end }}
 
 targets:
+  # ===========================================
+  # DEVELOPMENT ENVIRONMENT
+  # ===========================================
 {{- if .include_dev_env }}
   dev:
     mode: development
     workspace:
-      {{- if eq .cloud_provider "azure" }}
-      host: https://adb-123456789.12.azuredatabricks.net  # Replace with your dev workspace URL
-      {{- else if eq .cloud_provider "aws" }}
-      host: https://dbc-12345678-1234.cloud.databricks.com  # Replace with your dev workspace URL
-      {{- end }}
+      # host: Automatically uses DATABRICKS_HOST environment variable
       root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
-    run_as:
-      user_name: ${workspace.current_user.userName}
+    # run_as: removed for dev because pipelines don't support run_as different from deployment identity
 
+    {{- if .include_variable_overrides }}
+    # Development-specific variables loaded from .databricks/bundle/dev/variable-overrides.json
+    {{- else }}
     variables:
       {{- if .include_unity_catalog }}
       catalog: dev_catalog
       schema: dev_schema
       {{- end }}
       environment: dev
-      cluster_node_type: {{if eq .cloud_provider "azure"}}Standard_DS3_v2{{else}}i3.xlarge{{end}}
-      min_workers: 0
-      max_workers: 2
+      {{- if .serverless_compute }}
+      serverless_enabled: true
+      {{- end }}
       service_principal_id: {{.organization}}-{{.project_name}}-dev-sp
+      user_email: {{.email}}
       notification_email: {{.email}}
+      {{- if .include_monitoring }}
+      oncall_email: {{.email}}
+      {{- end }}
+      {{- if .medallion_architecture }}
+      raw_data_location: {{if eq .cloud_provider "azure"}}abfss://dev-bronze@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-bronze/{{else}}gs://{{.organization}}-dev-datalake-bronze/{{end}}
+      processed_data_location: {{if eq .cloud_provider "azure"}}abfss://dev-silver@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-silver/{{else}}gs://{{.organization}}-dev-datalake-silver/{{end}}
+      curated_data_location: {{if eq .cloud_provider "azure"}}abfss://dev-gold@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-dev-datalake-gold/{{else}}gs://{{.organization}}-dev-datalake-gold/{{end}}
+      {{- end }}
+    {{- end }}
+
+    # Development-specific resource overrides
+    resources:
+      {{- if .include_example_jobs }}
+      jobs:
+        data_processing_job:
+          timeout_seconds: 3600
+          max_concurrent_runs: 1
+          {{- if .serverless_compute }}
+          # Use pure serverless compute (no job clusters)
+          {{- end }}
+          tasks:
+            - task_key: main_task
+              {{- if .serverless_compute }}
+              # No cluster configuration needed for serverless
+              {{- end }}
+              notebook_task:
+                notebook_path: ./src/notebooks/data_processing.py
+                source: WORKSPACE
+              timeout_seconds: 3600
+              max_retries: 2
+          email_notifications:
+            on_failure:
+              - ${workspace.current_user.userName}
+      {{- end }}
+      {{- if .medallion_architecture }}
+      pipelines:
+        bronze_pipeline:
+          development: true
+          photon: false
+          {{- if .serverless_compute }}
+          # Serverless will be configured in common resources
+          {{- end }}
+      {{- end }}
 {{- end }}
 
+  # ===========================================
+  # STAGING ENVIRONMENT
+  # ===========================================
 {{- if .include_staging_env }}
   staging:
-    mode: production
+    <<: *production_workspace
     workspace:
-      {{- if eq .cloud_provider "azure" }}
-      host: https://adb-123456789.13.azuredatabricks.net  # Replace with your staging workspace URL
-      {{- else if eq .cloud_provider "aws" }}
-      host: https://dbc-12345678-1235.cloud.databricks.com  # Replace with your staging workspace URL
-      {{- end }}
+      # host: Automatically uses DATABRICKS_HOST environment variable
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
 
     run_as:
-      service_principal_name: ${var.service_principal_id}
+      <<: *production_auth
 
+    {{- if .include_variable_overrides }}
+    # Staging-specific variables loaded from .databricks/bundle/staging/variable-overrides.json
+    {{- else }}
     variables:
       {{- if .include_unity_catalog }}
       catalog: staging_catalog
       schema: staging_schema
       {{- end }}
       environment: staging
-      cluster_node_type: {{if eq .cloud_provider "azure"}}Standard_DS4_v2{{else}}i3.2xlarge{{end}}
-      min_workers: 1
-      max_workers: 4
+      {{- if .serverless_compute }}
+      serverless_enabled: true
+      {{- end }}
       service_principal_id: {{.organization}}-{{.project_name}}-staging-sp
+      user_email: {{.email}}
       notification_email: {{.email}}
+      {{- if .include_monitoring }}
+      oncall_email: {{.email}}
+      {{- end }}
+      {{- if .medallion_architecture }}
+      raw_data_location: {{if eq .cloud_provider "azure"}}abfss://staging-bronze@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-staging-datalake-bronze/{{else}}gs://{{.organization}}-staging-datalake-bronze/{{end}}
+      processed_data_location: {{if eq .cloud_provider "azure"}}abfss://staging-silver@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-staging-datalake-silver/{{else}}gs://{{.organization}}-staging-datalake-silver/{{end}}
+      curated_data_location: {{if eq .cloud_provider "azure"}}abfss://staging-gold@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-staging-datalake-gold/{{else}}gs://{{.organization}}-staging-datalake-gold/{{end}}
+      {{- end }}
+    {{- end }}
+
+    # Staging-specific resource overrides
+    resources:
+      {{- if .include_example_jobs }}
+      jobs:
+        data_processing_job:
+          timeout_seconds: 14400
+          max_concurrent_runs: 2
+          tasks:
+            - task_key: main_task
+              timeout_seconds: 7200
+              max_retries: 3
+          email_notifications:
+            {{- if .include_monitoring }}
+            <<: *production_notifications
+            {{- else }}
+            <<: *standard_notifications
+            {{- end }}
+      {{- end }}
+      {{- if .medallion_architecture }}
+      pipelines:
+        bronze_pipeline:
+          development: false
+          photon: true
+          {{- if .include_monitoring }}
+          notifications:
+            - email_recipients:
+                - ${var.notification_email}
+                - ${var.oncall_email}
+              alerts:
+                - on-update-failure
+                - on-flow-failure
+          {{- end }}
+      {{- end }}
 {{- end }}
 
+  # ===========================================
+  # PRODUCTION ENVIRONMENT
+  # ===========================================
 {{- if .include_prod_env }}
   prod:
-    mode: production
+    <<: *production_workspace
     workspace:
-      {{- if eq .cloud_provider "azure" }}
-      host: https://adb-123456789.14.azuredatabricks.net  # Replace with your prod workspace URL
-      {{- else if eq .cloud_provider "aws" }}
-      host: https://dbc-12345678-1236.cloud.databricks.com  # Replace with your prod workspace URL
-      {{- end }}
+      # host: Automatically uses DATABRICKS_HOST environment variable
       root_path: /Shared/.bundle/${bundle.name}/${bundle.target}
 
     run_as:
-      service_principal_name: ${var.service_principal_id}
+      <<: *production_auth
 
+    {{- if .include_variable_overrides }}
+    # Production-specific variables loaded from .databricks/bundle/prod/variable-overrides.json
+    {{- else }}
     variables:
       {{- if .include_unity_catalog }}
       catalog: prod_catalog
       schema: prod_schema
       {{- end }}
       environment: prod
-      cluster_node_type: {{if eq .cloud_provider "azure"}}Standard_DS5_v2{{else}}i3.4xlarge{{end}}
-      min_workers: 2
-      max_workers: 8
+      {{- if .serverless_compute }}
+      serverless_enabled: true
+      {{- end }}
       service_principal_id: {{.organization}}-{{.project_name}}-prod-sp
+      user_email: {{.email}}
       notification_email: {{.email}}
+      {{- if .include_monitoring }}
+      oncall_email: {{.email}}
+      {{- end }}
+      {{- if .medallion_architecture }}
+      raw_data_location: {{if eq .cloud_provider "azure"}}abfss://prod-bronze@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-prod-datalake-bronze/{{else}}gs://{{.organization}}-prod-datalake-bronze/{{end}}
+      processed_data_location: {{if eq .cloud_provider "azure"}}abfss://prod-silver@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-prod-datalake-silver/{{else}}gs://{{.organization}}-prod-datalake-silver/{{end}}
+      curated_data_location: {{if eq .cloud_provider "azure"}}abfss://prod-gold@{{.organization}}datalake.dfs.core.windows.net/{{else if eq .cloud_provider "aws"}}s3://{{.organization}}-prod-datalake-gold/{{else}}gs://{{.organization}}-prod-datalake-gold/{{end}}
+      {{- end }}
+    {{- end }}
+
+    # Production-specific resource overrides
+    resources:
+      {{- if .include_example_jobs }}
+      jobs:
+        data_processing_job:
+          schedule:
+            quartz_cron_expression: 0 0 2 * * ?
+            timezone_id: UTC
+            pause_status: UNPAUSED
+          timeout_seconds: 21600
+          max_concurrent_runs: 1
+          {{- if not .serverless_compute }}
+          # Traditional job cluster for production
+          job_clusters:
+            - job_cluster_key: production_cluster
+              new_cluster:
+                spark_version: 13.3.x-scala2.12
+                {{- if eq .cloud_provider "azure" }}
+                node_type_id: Standard_DS4_v2
+                driver_node_type_id: Standard_DS4_v2
+                {{- else if eq .cloud_provider "aws" }}
+                node_type_id: i3.2xlarge
+                driver_node_type_id: i3.2xlarge
+                {{- else }}
+                node_type_id: n1-standard-4
+                driver_node_type_id: n1-standard-4
+                {{- end }}
+                num_workers: 0
+                enable_elastic_disk: true
+                data_security_mode: SINGLE_USER
+                runtime_engine: PHOTON
+                spark_conf:
+                  spark.sql.adaptive.enabled: "true"
+                  spark.sql.adaptive.coalescePartitions.enabled: "true"
+                  spark.sql.adaptive.skewJoin.enabled: "true"
+                  spark.databricks.delta.optimizeWrite.enabled: "true"
+                  spark.databricks.delta.autoCompact.enabled: "true"
+                custom_tags:
+                  environment: ${var.environment}
+                  project: {{.project_name}}
+                  bundle: ${bundle.name}
+                  criticality: high
+                  compute_type: production
+          {{- end }}
+          tasks:
+            - task_key: main_task
+              {{- if .serverless_compute }}
+              # Pure serverless compute - no cluster configuration needed
+              {{- else }}
+              job_cluster_key: production_cluster
+              {{- end }}
+              timeout_seconds: 10800
+              max_retries: 5
+              min_retry_interval_millis: 300000
+              retry_on_timeout: true
+          email_notifications:
+            {{- if .include_monitoring }}
+            <<: *production_notifications
+            {{- else }}
+            <<: *standard_notifications
+            {{- end }}
+          tags:
+            criticality: high
+      {{- end }}
+      {{- if .medallion_architecture }}
+      pipelines:
+        bronze_pipeline:
+          development: false
+          photon: true
+          {{- if .serverless_compute }}
+          # Serverless will be configured in common resources
+          {{- end }}
+          configuration:
+            pipelines.autoOptimize.managed: "true"
+            pipelines.autoOptimize.zOrderCols: "true"
+          {{- if .include_monitoring }}
+          notifications:
+            - email_recipients:
+                - ${var.notification_email}
+                - ${var.oncall_email}
+              alerts:
+                - on-update-failure
+                - on-flow-failure
+                - on-update-fatal-failure
+          {{- end }}
+      {{- end }}
 {{- end }}
 
 # Common resources across all environments
 resources:
   {{- if .include_example_jobs }}
   jobs:
-    {{$package_name}}_job:
-      name: ${bundle.target}_{{$package_name}}_job
+    data_processing_job:
+      name: ${bundle.target}_data_processing_job
 
-      job_clusters:
-        - job_cluster_key: main_cluster
-          new_cluster:
-            spark_version: 13.3.x-scala2.12
-            node_type_id: ${var.cluster_node_type}
-            {{- if eq .cloud_provider "azure" }}
-            driver_node_type_id: ${var.cluster_node_type}
-            {{- end }}
-            autoscale:
-              min_workers: ${var.min_workers}
-              max_workers: ${var.max_workers}
-            custom_tags:
-              environment: ${var.environment}
-              project: {{.project_name}}
-              bundle: ${bundle.name}
-              created_by: {{.author}}
-
+      {{- if .serverless_compute }}
+      # Pure serverless compute (no job clusters needed)
+      {{- end }}
       tasks:
         - task_key: main_task
-          job_cluster_key: main_cluster
+          {{- if .serverless_compute }}
+          # Serverless compute - no cluster configuration needed
+          {{- end }}
+
           notebook_task:
-            notebook_path: ./src/notebooks/{{$package_name}}_processing
+            notebook_path: ./src/notebooks/data_processing.py
             source: WORKSPACE
+
           timeout_seconds: 3600
           max_retries: 2
+
+      email_notifications:
+        <<: *standard_notifications
+
+      tags:
+        environment: ${var.environment}
+        bundle: ${bundle.name}
+        project: {{.project_name}}
+        created_by: {{.author}}
+  {{- end }}
+
+  {{- if .medallion_architecture }}
+  pipelines:
+    bronze_pipeline:
+      name: ${bundle.target}_bronze_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      {{- if .serverless_compute }}
+      # Serverless compute configuration
+      serverless: ${var.serverless_enabled}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      libraries:
+        - notebook:
+            path: ./src/notebooks/bronze_ingestion.py
+
+      development: true # Will be overridden in production targets
+      photon: false # Will be overridden in production targets
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+
+    {{- if .include_example_jobs }}
+    silver_pipeline:
+      name: ${bundle.target}_silver_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      {{- if .serverless_compute }}
+      serverless: ${var.serverless_enabled}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      libraries:
+        - notebook:
+            path: ./src/notebooks/silver_transformation.py
+
+      development: true
+      photon: false
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+
+    gold_pipeline:
+      name: ${bundle.target}_gold_pipeline
+
+      {{- if .include_unity_catalog }}
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      {{- end }}
+
+      {{- if .serverless_compute }}
+      serverless: ${var.serverless_enabled}
+      {{- end }}
+
+      configuration:
+        pipeline.environment: ${var.environment}
+        bundle.name: ${bundle.name}
+        project.name: {{.project_name}}
+
+      libraries:
+        - notebook:
+            path: ./src/notebooks/gold_aggregation.py
+
+      development: true
+      photon: false
+
+      notifications:
+        - email_recipients:
+            - ${var.notification_email}
+          alerts:
+            - on-update-failure
+    {{- end }}
+  {{- end }}
+
+  {{- if .include_data_quality }}
+  jobs:
+    data_quality_job:
+      name: ${bundle.target}_data_quality_validation
+
+      {{- if .serverless_compute }}
+      # Pure serverless compute
+      {{- else }}
+      job_clusters:
+        - job_cluster_key: dq_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            {{- if eq .cloud_provider "azure" }}
+            node_type_id: Standard_DS3_v2
+            {{- else if eq .cloud_provider "aws" }}
+            node_type_id: i3.xlarge
+            {{- else }}
+            node_type_id: n1-standard-2
+            {{- end }}
+            num_workers: 1
+            custom_tags:
+              environment: ${var.environment}
+              purpose: data_quality
+              project: {{.project_name}}
+      {{- end }}
+
+      tasks:
+        - task_key: quality_checks
+          {{- if not .serverless_compute }}
+          job_cluster_key: dq_cluster
+          {{- end }}
+
+          {{- if .include_example_jobs }}
+          notebook_task:
+            notebook_path: ./src/notebooks/data_quality_validation.py
+            source: WORKSPACE
+          {{- else }}
+          python_wheel_task:
+            package_name: {{.project_name}}
+            entry_point: data_quality_main
+          {{- end }}
+
+          timeout_seconds: 1800
+          max_retries: 1
 
       email_notifications:
         on_failure:
@@ -159,7 +586,72 @@ resources:
 
       tags:
         environment: ${var.environment}
-        bundle: ${bundle.name}
+        purpose: data_quality
+        project: {{.project_name}}
+  {{- end }}
+
+  {{- if .include_monitoring }}
+  jobs:
+    monitoring_job:
+      name: ${bundle.target}_system_monitoring
+
+      schedule:
+        quartz_cron_expression: 0 */15 * * * ?  # Every 15 minutes
+        timezone_id: UTC
+        pause_status: UNPAUSED
+
+      {{- if .serverless_compute }}
+      # Pure serverless compute
+      {{- else }}
+      job_clusters:
+        - job_cluster_key: monitoring_cluster
+          new_cluster:
+            spark_version: 13.3.x-scala2.12
+            {{- if eq .cloud_provider "azure" }}
+            node_type_id: Standard_DS3_v2
+            {{- else if eq .cloud_provider "aws" }}
+            node_type_id: i3.xlarge
+            {{- else }}
+            node_type_id: n1-standard-2
+            {{- end }}
+            num_workers: 0  # Single-node for monitoring
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              environment: ${var.environment}
+              purpose: monitoring
+              project: {{.project_name}}
+      {{- end }}
+
+      tasks:
+        - task_key: health_check
+          {{- if not .serverless_compute }}
+          job_cluster_key: monitoring_cluster
+          {{- end }}
+
+          {{- if .include_example_jobs }}
+          notebook_task:
+            notebook_path: ./src/notebooks/system_monitoring.py
+            source: WORKSPACE
+          {{- else }}
+          python_wheel_task:
+            package_name: {{.project_name}}
+            entry_point: monitoring_main
+          {{- end }}
+
+          timeout_seconds: 900
+          max_retries: 1
+
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+          - ${var.oncall_email}
+
+      tags:
+        environment: ${var.environment}
+        purpose: monitoring
+        critical: "true"
         project: {{.project_name}}
   {{- end }}
 
@@ -177,4 +669,6 @@ resources:
         project: {{.project_name}}
         owner: {{.author}}
         created_by_bundle: ${bundle.name}
+        created_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        data_classification: "{{- if .include_security }}confidential{{- else }}internal{{- end }}"
 {{- end }}
