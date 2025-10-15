@@ -71,7 +71,7 @@ jobs:
     needs: quality-checks
     strategy:
       matrix:
-        environment: {{ range .environments }}[{{ . }}]{{ end }}
+        environment: [{{- if .include_dev_env }}"dev"{{- if or .include_staging_env .include_prod_env }}, {{- end }}{{- end }}{{- if .include_staging_env }}"staging"{{- if .include_prod_env }}, {{- end }}{{- end }}{{- if .include_prod_env }}"prod"{{- end }}]
 
     steps:
       - name: Checkout code
@@ -99,7 +99,11 @@ jobs:
     name: "Deploy to Development"
     runs-on: ubuntu-latest
     needs: [quality-checks, bundle-validation]
+    {{- if .include_dev_env }}
     if: github.ref == 'refs/heads/develop' || github.event_name == 'workflow_dispatch'
+    {{- else }}
+    if: false
+    {{- end }}
     environment: development
 
     steps:
@@ -143,7 +147,11 @@ jobs:
     name: "Deploy to Staging"
     runs-on: ubuntu-latest
     needs: [deploy-dev]
-    if: github.ref == 'refs/heads/main' && contains('{{ .environments | join "," }}', 'staging')
+    {{- if .include_staging_env }}
+    if: github.ref == 'refs/heads/main'
+    {{- else }}
+    if: false
+    {{- end }}
     environment: staging
 
     steps:
@@ -185,7 +193,11 @@ jobs:
     name: "Deploy to Production"
     runs-on: ubuntu-latest
     needs: [deploy-staging]
-    if: github.ref == 'refs/heads/main' && contains('{{ .environments | join "," }}', 'prod')
+    {{- if .include_prod_env }}
+    if: github.ref == 'refs/heads/main'
+    {{- else }}
+    if: false
+    {{- end }}
     environment: production
 
     steps:
